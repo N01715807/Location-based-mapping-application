@@ -10,7 +10,6 @@ function toNum(v: string | null, fallback: number) {
 
 function toSafeLimit(v: string | null, fallback = 2000) {
   const n = Math.floor(toNum(v, fallback));
-  // 安全限制，防止一口气太多
   return Math.max(1, Math.min(n, 5000));
 }
 
