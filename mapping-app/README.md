@@ -141,3 +141,14 @@ mysql> DESCRIBE usage_logs;
 10 rows in set (0.00 sec)
 http://10.0.0.79:3000/api/admin/sync/wsa-water-wells
 
+curl -X POST http://localhost:3000/api/admin/sync/wsa-water-wells \
+  -H "Content-Type: application/json" \
+  -H "x-admin-token: some-long-random-string" \
+  -d '{"mode":"full"}'
+
+curl -X POST http://localhost:3000/api/admin/sync/wsa-water-wells \
+  -H "Content-Type: application/json" \
+  -H "x-admin-token: some-long-random-string" \
+  -d '{"mode":"incremental"}'
+
+/api/water-resources?minLat=...&maxLat=...&minLng=...&maxLng=...&limit=2000
