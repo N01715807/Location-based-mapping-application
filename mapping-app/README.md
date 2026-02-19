@@ -37,5 +37,107 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 
 mysql -h 127.0.0.1 -u root
 
-http://localhost:3000/api/water-resources
-http://localhost:3000/home
+http://10.0.0.79:3000/api/water-resources
+http://10.0.0.79:3000/home
+
+WSA Water Wells – Layer Verification
+Layer URL
+https://gis.wsask.ca/arcgiswa/rest/services/WellsSite/WaterWellsPublic/FeatureServer/0
+Verified Layer Properties
+Item	Value
+objectIdField	OBJECTID
+maxRecordCount	30000
+Spatial Reference	2151 (latest WKID: 2957)
+Important Note
+The source layer is NOT in WGS84.
+All geometry queries must include:
+outSR=4326
+Otherwise coordinates will be returned in projected meters and will not display correctly on web maps.
+Verification Performed
+Confirmed OBJECTID as primary key.
+Confirmed maxRecordCount = 30000.
+Confirmed Spatial Reference is 2151 (not 4326).
+
+mysql> DESCRIBE water_resources;
++--------------+---------------+------+-----+-------------------+-----------------------------------------------+
+| Field        | Type          | Null | Key | Default           | Extra                                         |
++--------------+---------------+------+-----+-------------------+-----------------------------------------------+
+| id           | bigint        | NO   | PRI | NULL              | auto_increment                                |
+| name         | varchar(255)  | NO   |     | NULL              |                                               |
+| type         | varchar(100)  | NO   |     | NULL              |                                               |
+| is_available | tinyint       | NO   |     | 1                 |                                               |
+| latitude     | decimal(10,7) | YES  |     | NULL              |                                               |
+| longitude    | decimal(10,7) | YES  |     | NULL              |                                               |
+| is_deleted   | tinyint       | NO   |     | 0                 |                                               |
+| deleted_at   | datetime      | YES  |     | NULL              |                                               |
+| status       | varchar(50)   | YES  |     | NULL              |                                               |
+| created_at   | datetime      | YES  |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED                             |
+| updated_at   | datetime      | NO   |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED on update CURRENT_TIMESTAMP |
++--------------+---------------+------+-----+-------------------+-----------------------------------------------+
+11 rows in set (0.00 sec)
+
+mysql> DESCRIBE water_resources_source;
++-------------------+--------------+------+-----+-------------------+-------------------+
+| Field             | Type         | Null | Key | Default           | Extra             |
++-------------------+--------------+------+-----+-------------------+-------------------+
+| id                | bigint       | NO   | PRI | NULL              | auto_increment    |
+| source            | varchar(32)  | NO   | MUL | NULL              |                   |
+| source_layer      | varchar(128) | NO   |     | NULL              |                   |
+| source_objectid   | bigint       | NO   |     | NULL              |                   |
+| raw_attributes    | json         | NO   |     | NULL              |                   |
+| raw_geometry      | json         | YES  |     | NULL              |                   |
+| source_updated_at | datetime     | YES  |     | NULL              |                   |
+| first_seen_at     | datetime     | NO   |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED |
+| last_seen_at      | datetime     | NO   | MUL | CURRENT_TIMESTAMP | DEFAULT_GENERATED |
+| is_deleted        | tinyint      | NO   | MUL | 0                 |                   |
+| deleted_at        | datetime     | YES  |     | NULL              |                   |
++-------------------+--------------+------+-----+-------------------+-------------------+
+11 rows in set (0.01 sec)
+
+mysql> DESCRIBE sync_jobs;
++--------------+--------------+------+-----+-------------------+-------------------+
+| Field        | Type         | Null | Key | Default           | Extra             |
++--------------+--------------+------+-----+-------------------+-------------------+
+| id           | bigint       | NO   | PRI | NULL              | auto_increment    |
+| source       | varchar(32)  | NO   | MUL | NULL              |                   |
+| source_layer | varchar(128) | NO   |     | NULL              |                   |
+| status       | varchar(20)  | NO   | MUL | NULL              |                   |
+| started_at   | datetime     | NO   |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED |
+| finished_at  | datetime     | YES  |     | NULL              |                   |
+| stats_json   | json         | YES  |     | NULL              |                   |
+| error        | text         | YES  |     | NULL              |                   |
++--------------+--------------+------+-----+-------------------+-------------------+
+8 rows in set (0.00 sec)
+
+mysql> DESCRIBE fields;
++------------+--------------+------+-----+-------------------+-----------------------------------------------+
+| Field      | Type         | Null | Key | Default           | Extra                                         |
++------------+--------------+------+-----+-------------------+-----------------------------------------------+
+| id         | bigint       | NO   | PRI | NULL              | auto_increment                                |
+| name       | varchar(255) | NO   | UNI | NULL              |                                               |
+| notes      | text         | YES  |     | NULL              |                                               |
+| is_deleted | tinyint      | NO   | MUL | 0                 |                                               |
+| deleted_at | datetime     | YES  |     | NULL              |                                               |
+| created_at | datetime     | NO   |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED                             |
+| updated_at | datetime     | NO   |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED on update CURRENT_TIMESTAMP |
++------------+--------------+------+-----+-------------------+-----------------------------------------------+
+7 rows in set (0.00 sec)
+
+mysql> DESCRIBE usage_logs;
++-------------------+---------------+------+-----+-------------------+-------------------+
+| Field             | Type          | Null | Key | Default           | Extra             |
++-------------------+---------------+------+-----+-------------------+-------------------+
+| id                | bigint        | NO   | PRI | NULL              | auto_increment    |
+| water_resource_id | bigint        | NO   | MUL | NULL              |                   |
+| used_at           | datetime      | NO   | MUL | NULL              |                   |
+| field_id          | bigint        | YES  | MUL | NULL              |                   |
+| field_name        | varchar(255)  | YES  |     | NULL              |                   |
+| amount            | decimal(12,2) | NO   |     | NULL              |                   |
+| note              | text          | YES  |     | NULL              |                   |
+| is_deleted        | tinyint       | NO   | MUL | 0                 |                   |
+| deleted_at        | datetime      | YES  |     | NULL              |                   |
+| created_at        | datetime      | NO   |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED |
++-------------------+---------------+------+-----+-------------------+-------------------+
+10 rows in set (0.00 sec)
+http://10.0.0.79:3000/api/admin/sync/wsa-water-wells
+
