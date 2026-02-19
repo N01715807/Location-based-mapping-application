@@ -221,17 +221,8 @@ export default function WaterResourcesMap() {
     };
   }, []);
 
-  const onClickCluster = useCallback((c: ClusterPoint, e?: google.maps.MapMouseEvent) => {
+  const onClickCluster = useCallback(() => {
     suppressFetchUntilRef.current = Date.now() + 800;
-
-    const map = mapRef.current;
-    if (!map) return;
-
-    const shift = (e as any)?.domEvent?.shiftKey === true;
-    if (!shift) return;
-
-    map.panTo({ lat: c.lat, lng: c.lng });
-    map.setZoom((map.getZoom() ?? 0) + 2);
   }, []);
 
   if (loadError) return <div>Map load failed.</div>;
@@ -260,7 +251,7 @@ export default function WaterResourcesMap() {
               key={`c-${i}-${c.lat}-${c.lng}`}
               position={{ lat: c.lat, lng: c.lng }}
               label={{ text: String(c.count) }}
-              onClick={(e) => onClickCluster(c, e)}
+              onClick={() => onClickCluster()}
             />
           ))}
 

@@ -19,16 +19,21 @@ function toSafeLimit(v: string | null, fallback = 2000, max = 5000) {
 }
 
 function cellSizeByZoom(z: number) {
-  if (z <= 6) return 0.5;
-  if (z <= 8) return 0.2;
-  if (z <= 10) return 0.08;
-  if (z <= 12) return 0.03;
+  if (z <= 6) return 0.8;
+  if (z <= 8) return 0.3;
+  if (z <= 10) return 0.12;
+  if (z <= 12) return 0.05;
   return 0.01;
 }
 
 function normalizeMinMax(a: number, b: number): [number, number] {
   return a <= b ? [a, b] : [b, a];
 }
+
+const NOT_DECOMMISSIONED_WHERE = `
+  AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(raw_attributes, '$.cDecommisioned')), '0') <> '1'
+  AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(raw_attributes, '$.dDateDecommisioned')), 'null') IN ('null', '')
+`;
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -45,8 +50,8 @@ export async function GET(req: Request) {
 
   const limit =
     zoom < 13
-      ? toSafeLimit(searchParams.get("limit"), 300, 2000)
-      : toSafeLimit(searchParams.get("limit"), 800, 2000);
+      ? toSafeLimit(searchParams.get("limit"), 200, 1200)
+      : toSafeLimit(searchParams.get("limit"), 600, 1500);
 
   const pool = getPool();
 
@@ -66,17 +71,12 @@ export async function GET(req: Request) {
         AND longitude BETWEEN ? AND ?
         AND latitude IS NOT NULL
         AND longitude IS NOT NULL
+        ${NOT_DECOMMISSIONED_WHERE}
       GROUP BY lat_cell, lng_cell
-      ORDER BY count DESC
       LIMIT ${limit}
     `;
 
-    const params = [
-      cell, cell,
-      cell, cell,
-      minLat, maxLat,
-      minLng, maxLng,
-    ];
+    const params = [cell, cell, cell, cell, minLat, maxLat, minLng, maxLng];
 
     const [rows]: any = await pool.query(sql, params);
 
@@ -99,14 +99,14 @@ export async function GET(req: Request) {
       source_objectid AS id,
       JSON_UNQUOTE(JSON_EXTRACT(raw_attributes, '$.WellName')) AS name,
       latitude,
-      longitude,
-      JSON_UNQUOTE(JSON_EXTRACT(raw_attributes, '$.Status')) AS status
+      longitude
     FROM water_resources_source
     WHERE is_deleted = 0
       AND latitude BETWEEN ? AND ?
       AND longitude BETWEEN ? AND ?
       AND latitude IS NOT NULL
       AND longitude IS NOT NULL
+      ${NOT_DECOMMISSIONED_WHERE}
     LIMIT ${limit}
   `;
 
@@ -124,7 +124,7 @@ export async function GET(req: Request) {
       name: r.name,
       latitude: Number(r.latitude),
       longitude: Number(r.longitude),
-      status: r.status ?? null,
+      status: null,
     })),
   });
 }
