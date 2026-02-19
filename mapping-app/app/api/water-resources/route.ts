@@ -32,7 +32,7 @@ function normalizeMinMax(a: number, b: number): [number, number] {
 
 const NOT_DECOMMISSIONED_WHERE = `
   AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(raw_attributes, '$.cDecommisioned')), '0') <> '1'
-  AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(raw_attributes, '$.dDateDecommisioned')), 'null') IN ('null', '')
+  AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(raw_attributes, '$.dDateDecommisioned')), 'null') IN ('null', '', '1900.01.01')
 `;
 
 export async function GET(req: Request) {

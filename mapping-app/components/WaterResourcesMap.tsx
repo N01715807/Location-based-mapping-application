@@ -25,12 +25,7 @@ type ApiOk =
 type ApiErr = { ok: false; error?: string };
 
 function isApiOk(x: any): x is ApiOk {
-  return (
-    x &&
-    x.ok === true &&
-    (x.mode === "cluster" || x.mode === "wells") &&
-    Array.isArray(x.data)
-  );
+  return x && x.ok === true && (x.mode === "cluster" || x.mode === "wells") && Array.isArray(x.data);
 }
 
 function normalizeAvailable(p: { available?: any; status?: any }): boolean | null {
@@ -39,14 +34,8 @@ function normalizeAvailable(p: { available?: any; status?: any }): boolean | nul
 
   const s = String(p.status || "").toLowerCase().trim();
   if (!s) return null;
-  if (["active", "available", "open", "in service", "operational"].includes(s))
-    return true;
-  if (
-    ["inactive", "unavailable", "closed", "out of service", "abandoned"].includes(
-      s
-    )
-  )
-    return false;
+  if (["active", "available", "open", "in service", "operational"].includes(s)) return true;
+  if (["inactive", "unavailable", "closed", "out of service", "abandoned"].includes(s)) return false;
 
   return null;
 }
@@ -69,6 +58,12 @@ function makeQueryKey(
   return [modeHint, zoom, limit, q(sw.lat()), q(sw.lng()), q(ne.lat()), q(ne.lng())].join("|");
 }
 
+const CACHE_MS = 30_000;
+const IDLE_DEBOUNCE_MS = 350;
+
+const MAX_CLUSTER_MARKERS = 60;
+const MAX_WELL_MARKERS = 300;
+
 export default function WaterResourcesMap() {
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!,
@@ -77,11 +72,12 @@ export default function WaterResourcesMap() {
   const mapRef = useRef<google.maps.Map | null>(null);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastKeyRef = useRef<string>("");
+
   const cacheRef = useRef<Map<string, { ts: number; mode: "cluster" | "wells"; data: any[] }>>(
     new Map()
   );
+
   const abortRef = useRef<AbortController | null>(null);
-  const suppressFetchUntilRef = useRef<number>(0);
 
   const [mode, setMode] = useState<"cluster" | "wells">("cluster");
   const [clusters, setClusters] = useState<ClusterPoint[]>([]);
@@ -91,9 +87,13 @@ export default function WaterResourcesMap() {
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<string>("");
 
-  const fetchByBounds = useCallback(async () => {
-    if (Date.now() < suppressFetchUntilRef.current) return;
+  const clearAll = useCallback(() => {
+    setClusters([]);
+    setWells([]);
+    setSelected(null);
+  }, []);
 
+  const fetchByBounds = useCallback(async () => {
     const map = mapRef.current;
     if (!map) return;
 
@@ -102,25 +102,25 @@ export default function WaterResourcesMap() {
     if (!bounds) return;
 
     if (zoom < 6) {
-      setClusters([]);
-      setWells([]);
-      setSelected(null);
       lastKeyRef.current = "";
+      clearAll();
+      setHint("Zoom in to see data.");
       return;
     }
 
     const modeHint: "cluster" | "wells" = zoom < 13 ? "cluster" : "wells";
-    const limit = limitByZoom(zoom);
+    const apiLimit = limitByZoom(zoom);
+
     setHint("");
 
-    const key = makeQueryKey(bounds, zoom, limit, modeHint);
+    const key = makeQueryKey(bounds, zoom, apiLimit, modeHint);
     if (key === lastKeyRef.current) return;
     lastKeyRef.current = key;
 
     const now = Date.now();
     const cached = cacheRef.current.get(key);
 
-    if (cached && now - cached.ts < 30000) {
+    if (cached && now - cached.ts < CACHE_MS) {
       setMode(cached.mode);
       if (cached.mode === "cluster") {
         setClusters(cached.data as ClusterPoint[]);
@@ -145,7 +145,7 @@ export default function WaterResourcesMap() {
       minLng: String(sw.lng()),
       maxLng: String(ne.lng()),
       zoom: String(zoom),
-      limit: String(limit),
+      limit: String(apiLimit),
     });
 
     try {
@@ -168,36 +168,38 @@ export default function WaterResourcesMap() {
 
       if (json.mode === "cluster") {
         const valid = json.data
-          .filter(
-            (c: ClusterPoint) =>
-              Number.isFinite(c.lat) && Number.isFinite(c.lng) && c.count > 0
-          )
-          .sort((a: ClusterPoint, b: ClusterPoint) => b.count - a.count)
-          .slice(0, limit);
+          .filter((c) => Number.isFinite(c.lat) && Number.isFinite(c.lng) && c.count > 0)
+          .sort((a, b) => b.count - a.count)
+          .slice(0, Math.min(apiLimit, MAX_CLUSTER_MARKERS));
 
         cacheRef.current.set(key, { ts: now, mode: "cluster", data: valid });
+
         setMode("cluster");
         setClusters(valid);
         setWells([]);
         setSelected(null);
+
+        if (valid.length === 0) setHint("No results in this area.");
       } else {
         const valid = json.data
           .filter(
-            (w: WellPoint) =>
-              Number.isFinite(Number(w.latitude)) && Number.isFinite(Number(w.longitude))
+            (w) => Number.isFinite(Number(w.latitude)) && Number.isFinite(Number(w.longitude))
           )
-          .slice(0, limit);
+          .slice(0, Math.min(apiLimit, MAX_WELL_MARKERS));
 
         cacheRef.current.set(key, { ts: now, mode: "wells", data: valid });
+
         setMode("wells");
         setWells(valid);
         setClusters([]);
+
+        if (valid.length === 0) setHint("No wells in this area.");
       }
     } catch (e: any) {
       if (e?.name === "AbortError") return;
       setError(String(e?.message || e));
     }
-  }, []);
+  }, [clearAll]);
 
   const onLoad = useCallback(
     (map: google.maps.Map) => {
@@ -211,7 +213,7 @@ export default function WaterResourcesMap() {
     if (idleTimer.current) clearTimeout(idleTimer.current);
     idleTimer.current = setTimeout(() => {
       fetchByBounds();
-    }, 250);
+    }, IDLE_DEBOUNCE_MS);
   }, [fetchByBounds]);
 
   useEffect(() => {
@@ -221,15 +223,23 @@ export default function WaterResourcesMap() {
     };
   }, []);
 
-  const onClickCluster = useCallback(() => {
-    suppressFetchUntilRef.current = Date.now() + 800;
-  }, []);
-
   if (loadError) return <div>Map load failed.</div>;
   if (!isLoaded) return <div>Loading...</div>;
 
   return (
     <div style={{ width: "100%" }}>
+      <div style={{ display: "flex", gap: 12, marginBottom: 8, fontSize: 12, opacity: 0.85 }}>
+        <div>
+          mode: <b>{mode}</b>
+        </div>
+        <div>
+          clusters: <b>{clusters.length}</b>
+        </div>
+        <div>
+          wells: <b>{wells.length}</b>
+        </div>
+      </div>
+
       {hint && <div style={{ marginBottom: 8, opacity: 0.8 }}>{hint}</div>}
       {error && <div style={{ marginBottom: 8, color: "crimson" }}>{error}</div>}
 
@@ -243,40 +253,38 @@ export default function WaterResourcesMap() {
           clickableIcons: false,
           streetViewControl: false,
           mapTypeControl: false,
+          gestureHandling: "greedy",
+          styles: [
+            { featureType: "poi", stylers: [{ visibility: "off" }] },
+            { featureType: "transit", stylers: [{ visibility: "off" }] },
+          ],
         }}
       >
         {mode === "cluster" &&
-          clusters.map((c, i) => (
+          wells.length === 0 &&
+          clusters.map((c) => (
             <Marker
-              key={`c-${i}-${c.lat}-${c.lng}`}
+              key={`c-${c.lat.toFixed(5)}-${c.lng.toFixed(5)}`}
               position={{ lat: c.lat, lng: c.lng }}
               label={{ text: String(c.count) }}
-              onClick={() => onClickCluster()}
+              onClick={() => {}}
             />
           ))}
 
         {mode === "wells" &&
+          clusters.length === 0 &&
           wells.map((w) => (
             <Marker
               key={String(w.id)}
               position={{ lat: Number(w.latitude), lng: Number(w.longitude) }}
-              onClick={() => {
-                suppressFetchUntilRef.current = Date.now() + 800;
-                setSelected(w);
-              }}
+              onClick={() => setSelected(w)}
             />
           ))}
 
         {selected && mode === "wells" && (
           <InfoWindow
-            position={{
-              lat: Number(selected.latitude),
-              lng: Number(selected.longitude),
-            }}
-            onCloseClick={() => {
-              suppressFetchUntilRef.current = Date.now() + 800;
-              setSelected(null);
-            }}
+            position={{ lat: Number(selected.latitude), lng: Number(selected.longitude) }}
+            onCloseClick={() => setSelected(null)}
           >
             <div style={{ maxWidth: 260 }}>
               <strong>{selected.name || "Unknown"}</strong>
