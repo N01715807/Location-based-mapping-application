@@ -8,37 +8,123 @@ function toNum(v: string | null, fallback: number) {
   return Number.isFinite(n) ? n : fallback;
 }
 
-function toSafeLimit(v: string | null, fallback = 2000) {
+function toInt(v: string | null, fallback: number) {
   const n = Math.floor(toNum(v, fallback));
-  return Math.max(1, Math.min(n, 5000));
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function toSafeLimit(v: string | null, fallback = 2000, max = 5000) {
+  const n = Math.floor(toNum(v, fallback));
+  return Math.max(1, Math.min(n, max));
+}
+
+function cellSizeByZoom(z: number) {
+  if (z <= 6) return 0.5;
+  if (z <= 8) return 0.2;
+  if (z <= 10) return 0.08;
+  if (z <= 12) return 0.03;
+  return 0.01;
+}
+
+function normalizeMinMax(a: number, b: number): [number, number] {
+  return a <= b ? [a, b] : [b, a];
 }
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
 
-  const minLat = toNum(searchParams.get("minLat"), -90);
-  const maxLat = toNum(searchParams.get("maxLat"), 90);
-  const minLng = toNum(searchParams.get("minLng"), -180);
-  const maxLng = toNum(searchParams.get("maxLng"), 180);
+  let minLat = toNum(searchParams.get("minLat"), -90);
+  let maxLat = toNum(searchParams.get("maxLat"), 90);
+  let minLng = toNum(searchParams.get("minLng"), -180);
+  let maxLng = toNum(searchParams.get("maxLng"), 180);
 
-  const limit = toSafeLimit(searchParams.get("limit"), 2000);
+  [minLat, maxLat] = normalizeMinMax(minLat, maxLat);
+  [minLng, maxLng] = normalizeMinMax(minLng, maxLng);
+
+  const zoom = toInt(searchParams.get("zoom"), 0);
+
+  const limit =
+    zoom < 13
+      ? toSafeLimit(searchParams.get("limit"), 300, 2000)
+      : toSafeLimit(searchParams.get("limit"), 800, 2000);
 
   const pool = getPool();
+
+  if (zoom < 13) {
+    const cell = cellSizeByZoom(zoom);
+
+    const sql = `
+      SELECT
+        (FLOOR(latitude / ?) * ?) AS lat_cell,
+        (FLOOR(longitude / ?) * ?) AS lng_cell,
+        AVG(latitude)  AS lat,
+        AVG(longitude) AS lng,
+        COUNT(*)       AS count
+      FROM water_resources_source
+      WHERE is_deleted = 0
+        AND latitude BETWEEN ? AND ?
+        AND longitude BETWEEN ? AND ?
+        AND latitude IS NOT NULL
+        AND longitude IS NOT NULL
+      GROUP BY lat_cell, lng_cell
+      ORDER BY count DESC
+      LIMIT ${limit}
+    `;
+
+    const params = [
+      cell, cell,
+      cell, cell,
+      minLat, maxLat,
+      minLng, maxLng,
+    ];
+
+    const [rows]: any = await pool.query(sql, params);
+
+    return NextResponse.json({
+      ok: true,
+      mode: "cluster",
+      zoom,
+      cell,
+      count: rows.length,
+      data: rows.map((r: any) => ({
+        lat: Number(r.lat),
+        lng: Number(r.lng),
+        count: Number(r.count),
+      })),
+    });
+  }
 
   const sql = `
     SELECT
       source_objectid AS id,
       JSON_UNQUOTE(JSON_EXTRACT(raw_attributes, '$.WellName')) AS name,
       latitude,
-      longitude
+      longitude,
+      JSON_UNQUOTE(JSON_EXTRACT(raw_attributes, '$.Status')) AS status
     FROM water_resources_source
     WHERE is_deleted = 0
       AND latitude BETWEEN ? AND ?
       AND longitude BETWEEN ? AND ?
+      AND latitude IS NOT NULL
+      AND longitude IS NOT NULL
     LIMIT ${limit}
   `;
 
-  const [rows]: any = await pool.execute(sql, [minLat, maxLat, minLng, maxLng]);
+  const params = [minLat, maxLat, minLng, maxLng];
 
-  return NextResponse.json({ ok: true, count: rows.length, data: rows });
+  const [rows]: any = await pool.query(sql, params);
+
+  return NextResponse.json({
+    ok: true,
+    mode: "wells",
+    zoom,
+    count: rows.length,
+    data: rows.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      latitude: Number(r.latitude),
+      longitude: Number(r.longitude),
+      status: r.status ?? null,
+    })),
+  });
 }
