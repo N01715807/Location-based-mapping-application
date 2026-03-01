@@ -39,6 +39,7 @@ mysql -h 127.0.0.1 -u root
 
 http://10.0.0.79:3000/api/water-resources
 http://10.0.0.79:3000/home
+http://192.168.5.105:3000/home
 
 WSA Water Wells – Layer Verification
 Layer URL
