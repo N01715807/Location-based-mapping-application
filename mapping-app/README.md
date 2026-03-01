@@ -153,3 +153,17 @@ curl -X POST http://localhost:3000/api/admin/sync/wsa-water-wells \
 
 /api/water-resources?minLat=...&maxLat=...&minLng=...&maxLng=...&limit=2000
 http://10.0.0.79:3000/api/water-resources?minLat=47.95&maxLat=57.34&minLng=-127.09&maxLng=-84.90&zoom=6&limit=120
+
+列表
+http://localhost:3000/api/wells?page=1
+
+搜索
+http://localhost:3000/api/wells?page=1&q=Test
+
+facets
+http://localhost:3000/api/wells/facets
+
+详情
+http://localhost:3000/api/wells/12345
+
+192.168.5.105
