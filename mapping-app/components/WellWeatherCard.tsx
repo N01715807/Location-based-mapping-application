@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function WellWeatherCard({ lat, lng }: { lat: number; lng: number }) {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [data, setData] = useState<any>(null);
@@ -23,7 +25,9 @@ export default function WellWeatherCard({ lat, lng }: { lat: number; lng: number
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [lat, lng]);
 
   if (loading) return <div>Weather: Loading...</div>;
@@ -36,33 +40,137 @@ export default function WellWeatherCard({ lat, lng }: { lat: number; lng: number
   const s = data.summary?.next24h || {};
   const daily = data.daily || {};
   const h24 = data.hourly24 || [];
+  const agro = data.agro || {};
 
   return (
     <div>
+      <button onClick={() => router.back()}>
+        Back
+        </button>
       <h2>Weather</h2>
+
+      <h3>Agro summary</h3>
+      <table>
+        <tbody>
+          <tr>
+            <td>Dryness score</td>
+            <td>
+              {agro.dryness_score ?? "-"}{" "}
+              {agro.dryness_level ? `(${agro.dryness_level})` : ""}
+            </td>
+          </tr>
+          <tr>
+            <td>7-day precip</td>
+            <td>
+              {agro.p7_mm ?? "-"} {uD.precipitation_sum || "mm"}
+            </td>
+          </tr>
+          <tr>
+            <td>7-day ET₀</td>
+            <td>
+              {agro.et0_7d_mm ?? "-"} {uD.et0_fao_evapotranspiration_sum || "mm"}
+            </td>
+          </tr>
+          <tr>
+            <td>7-day deficit</td>
+            <td>
+              {agro.water_deficit_7d_mm ?? "-"} {uD.et0_fao_evapotranspiration_sum || "mm"}
+            </td>
+          </tr>
+          <tr>
+            <td>Next 48h precip</td>
+            <td>
+              {agro.next48h_precip_mm ?? "-"} {uH.precipitation || "mm"}
+            </td>
+          </tr>
+          <tr>
+            <td>Advice</td>
+            <td>{agro.advice ?? "-"}</td>
+          </tr>
+        </tbody>
+      </table>
 
       <h3>Current</h3>
       <table>
         <tbody>
-          <tr><td>Time</td><td>{cur.time ?? "-"}</td></tr>
-          <tr><td>Temperature</td><td>{cur.temperature ?? "-"} {uH.temperature_2m || "°C"}</td></tr>
-          <tr><td>Wind</td><td>{cur.windspeed ?? "-"} {cur.windspeed_unit || uH.wind_speed_10m || ""}</td></tr>
-          <tr><td>Wind direction</td><td>{cur.winddirection ?? "-"}°</td></tr>
-          <tr><td>Weather code</td><td>{cur.weathercode ?? "-"}</td></tr>
+          <tr>
+            <td>Time</td>
+            <td>{cur.time ?? "-"}</td>
+          </tr>
+          <tr>
+            <td>Temperature</td>
+            <td>
+              {cur.temperature ?? "-"} {uH.temperature_2m || "°C"}
+            </td>
+          </tr>
+          <tr>
+            <td>Wind</td>
+            <td>
+              {cur.windspeed ?? "-"} {cur.windspeed_unit || uH.wind_speed_10m || ""}
+            </td>
+          </tr>
+          <tr>
+            <td>Wind direction</td>
+            <td>{cur.winddirection ?? "-"}°</td>
+          </tr>
+          <tr>
+            <td>Weather code</td>
+            <td>{cur.weathercode ?? "-"}</td>
+          </tr>
         </tbody>
       </table>
 
       <h3>Next 24 hours (summary)</h3>
       <table>
         <tbody>
-          <tr><td>Temp min</td><td>{s.temperature_min ?? "-"} {uH.temperature_2m || "°C"}</td></tr>
-          <tr><td>Temp max</td><td>{s.temperature_max ?? "-"} {uH.temperature_2m || "°C"}</td></tr>
-          <tr><td>Precip total</td><td>{s.precipitation_sum ?? "-"} {uH.precipitation || "mm"}</td></tr>
-          <tr><td>Max precip probability</td><td>{s.precipitation_probability_max ?? "-"} {uH.precipitation_probability || "%"}</td></tr>
-          <tr><td>Max wind</td><td>{s.wind_speed_max ?? "-"} {uH.wind_speed_10m || "km/h"}</td></tr>
-          <tr><td>Max gust</td><td>{s.wind_gusts_max ?? "-"} {uH.wind_gusts_10m || "km/h"}</td></tr>
-          <tr><td>ET₀ total</td><td>{s.et0_sum ?? "-"} {uH.et0_fao_evapotranspiration || "mm"}</td></tr>
-          <tr><td>Max VPD</td><td>{s.vpd_max ?? "-"} {uH.vapour_pressure_deficit || "kPa"}</td></tr>
+          <tr>
+            <td>Temp min</td>
+            <td>
+              {s.temperature_min ?? "-"} {uH.temperature_2m || "°C"}
+            </td>
+          </tr>
+          <tr>
+            <td>Temp max</td>
+            <td>
+              {s.temperature_max ?? "-"} {uH.temperature_2m || "°C"}
+            </td>
+          </tr>
+          <tr>
+            <td>Precip total</td>
+            <td>
+              {s.precipitation_sum ?? "-"} {uH.precipitation || "mm"}
+            </td>
+          </tr>
+          <tr>
+            <td>Max precip probability</td>
+            <td>
+              {s.precipitation_probability_max ?? "-"} {uH.precipitation_probability || "%"}
+            </td>
+          </tr>
+          <tr>
+            <td>Max wind</td>
+            <td>
+              {s.wind_speed_max ?? "-"} {uH.wind_speed_10m || "km/h"}
+            </td>
+          </tr>
+          <tr>
+            <td>Max gust</td>
+            <td>
+              {s.wind_gusts_max ?? "-"} {uH.wind_gusts_10m || "km/h"}
+            </td>
+          </tr>
+          <tr>
+            <td>ET₀ total</td>
+            <td>
+              {s.et0_sum ?? "-"} {uH.et0_fao_evapotranspiration || "mm"}
+            </td>
+          </tr>
+          <tr>
+            <td>Max VPD</td>
+            <td>
+              {s.vpd_max ?? "-"} {uH.vapour_pressure_deficit || "kPa"}
+            </td>
+          </tr>
         </tbody>
       </table>
 
@@ -86,15 +194,31 @@ export default function WellWeatherCard({ lat, lng }: { lat: number; lng: number
           {h24.map((x: any) => (
             <tr key={x.time}>
               <td>{x.time}</td>
-              <td>{x.temperature_2m ?? "-"} {uH.temperature_2m || ""}</td>
-              <td>{x.relative_humidity_2m ?? "-"} {uH.relative_humidity_2m || "%"}</td>
-              <td>{x.precipitation ?? "-"} {uH.precipitation || "mm"}</td>
-              <td>{x.precipitation_probability ?? "-"} {uH.precipitation_probability || "%"}</td>
-              <td>{x.wind_speed_10m ?? "-"} {uH.wind_speed_10m || "km/h"}</td>
-              <td>{x.wind_gusts_10m ?? "-"} {uH.wind_gusts_10m || "km/h"}</td>
+              <td>
+                {x.temperature_2m ?? "-"} {uH.temperature_2m || ""}
+              </td>
+              <td>
+                {x.relative_humidity_2m ?? "-"} {uH.relative_humidity_2m || "%"}
+              </td>
+              <td>
+                {x.precipitation ?? "-"} {uH.precipitation || "mm"}
+              </td>
+              <td>
+                {x.precipitation_probability ?? "-"} {uH.precipitation_probability || "%"}
+              </td>
+              <td>
+                {x.wind_speed_10m ?? "-"} {uH.wind_speed_10m || "km/h"}
+              </td>
+              <td>
+                {x.wind_gusts_10m ?? "-"} {uH.wind_gusts_10m || "km/h"}
+              </td>
               <td>{x.wind_direction_10m ?? "-"}°</td>
-              <td>{x.et0_fao_evapotranspiration ?? "-"} {uH.et0_fao_evapotranspiration || "mm"}</td>
-              <td>{x.vapour_pressure_deficit ?? "-"} {uH.vapour_pressure_deficit || "kPa"}</td>
+              <td>
+                {x.et0_fao_evapotranspiration ?? "-"} {uH.et0_fao_evapotranspiration || "mm"}
+              </td>
+              <td>
+                {x.vapour_pressure_deficit ?? "-"} {uH.vapour_pressure_deficit || "kPa"}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -118,13 +242,29 @@ export default function WellWeatherCard({ lat, lng }: { lat: number; lng: number
           {(daily.time || []).map((day: string, i: number) => (
             <tr key={day}>
               <td>{day}</td>
-              <td>{daily.temperature_2m_min?.[i] ?? "-"} {uD.temperature_2m_min || "°C"}</td>
-              <td>{daily.temperature_2m_max?.[i] ?? "-"} {uD.temperature_2m_max || "°C"}</td>
-              <td>{daily.precipitation_sum?.[i] ?? "-"} {uD.precipitation_sum || "mm"}</td>
-              <td>{daily.precipitation_probability_max?.[i] ?? "-"} {uD.precipitation_probability_max || "%"}</td>
-              <td>{daily.wind_speed_10m_max?.[i] ?? "-"} {uD.wind_speed_10m_max || "km/h"}</td>
-              <td>{daily.wind_gusts_10m_max?.[i] ?? "-"} {uD.wind_gusts_10m_max || "km/h"}</td>
-              <td>{daily.et0_fao_evapotranspiration_sum?.[i] ?? "-"} {uD.et0_fao_evapotranspiration_sum || "mm"}</td>
+              <td>
+                {daily.temperature_2m_min?.[i] ?? "-"} {uD.temperature_2m_min || "°C"}
+              </td>
+              <td>
+                {daily.temperature_2m_max?.[i] ?? "-"} {uD.temperature_2m_max || "°C"}
+              </td>
+              <td>
+                {daily.precipitation_sum?.[i] ?? "-"} {uD.precipitation_sum || "mm"}
+              </td>
+              <td>
+                {daily.precipitation_probability_max?.[i] ?? "-"}{" "}
+                {uD.precipitation_probability_max || "%"}
+              </td>
+              <td>
+                {daily.wind_speed_10m_max?.[i] ?? "-"} {uD.wind_speed_10m_max || "km/h"}
+              </td>
+              <td>
+                {daily.wind_gusts_10m_max?.[i] ?? "-"} {uD.wind_gusts_10m_max || "km/h"}
+              </td>
+              <td>
+                {daily.et0_fao_evapotranspiration_sum?.[i] ?? "-"}{" "}
+                {uD.et0_fao_evapotranspiration_sum || "mm"}
+              </td>
             </tr>
           ))}
         </tbody>

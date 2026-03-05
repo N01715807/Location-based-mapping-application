@@ -1,26 +1,283 @@
-@import "tailwindcss";
+/* ===== Base ===== */
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+html {
+  box-sizing: border-box;
+  -webkit-text-size-adjust: 100%;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+*, *::before, *::after {
+  box-sizing: inherit;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;;
+  font-size: 16px;
+  line-height: 1.5;
+  background: #F6F0D7;
+  color: #9CAB84;
+}
+
+h1, h2, h3, h4, h5, h6,
+p, ul, ol {
+  margin: 0;
+  padding: 0;
+}
+
+ul, ol {
+  list-style: none;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button, input, textarea, select {
+  font: inherit;
+}
+
+table {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+/* ===== Main Container ===== */
+
+.page-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px 60px;
+}
+
+/* ===== Header ===== */
+
+.page-container{
+  position: relative;
+}
+
+.page-container::before{
+  content: "";
+  position: absolute;
+  top: 130px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100vw;
+  height: 347px;
+  background: rgba(197, 216, 157, 0.5);
+  z-index: -2;
+}
+
+.header-title{
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 80px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  line-height: 1;
+  color: #89986D;
+  margin: 0;
+}
+
+.header-title span{
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  color: #F6F0D7;
+  line-height: 1;
+}
+
+.header-title span::after{
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  left: -52px;
+  width: calc(100% + 52px);
+  top: 50%;
+  transform: translateY(-50%);
+  height: 1em;
+  background: #89986D;
+  z-index: -1;
+}
+
+.header{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 78px 0 100px 52px;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+}
+
+/* ===== Map Section ===== */
+
+.map-shell{
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  padding: 0 45px;
+  margin-bottom: 40px;
+}
+
+.map-card{
+  padding-top: 35px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #89986D;
+}
+
+.map-inner{
+  position: relative;
+}
+
+.map-inner > div{
+  border-radius: inherit;
+}
+
+.reset-btn{
+  position: absolute;
+  top: 35px;
+  left: 35px;
+  z-index: 10;
+
+  background: none;
+  border: none;
+  padding: 0;
+
+  cursor: pointer;
+
+  transition: transform 0.15s ease;
+}
+
+.reset-btn img{
+  width: 135px;
+  height: 39px;
+}
+
+.reset-img{
+  display: none;
+}
+
+.reset-img--normal{
+  display: block;
+}
+
+.reset-btn:hover .reset-img--normal{
+  display: none;
+}
+
+.reset-btn:hover .reset-img--hover{
+  display: block;
+}
+
+.reset-btn:active .reset-img--normal{
+  display: none;
+}
+
+.reset-btn:active .reset-img--hover{
+  display: none;
+}
+
+.reset-btn:active .reset-img--down{
+  display: block;
+}
+
+.reset-btn:hover{
+  transform: scale(1.08);
+}
+
+.reset-btn:active{
+  transform: scale(0.9);
+}
+
+/* ===== List Section ===== */
+
+.list-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+
+/* ===== Card ===== */
+
+.well-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  background: #efe7cd;
+  border: 1px solid #d6ceb1;
+
+  border-radius: 8px;
+
+  padding: 18px 24px;
+
+  box-shadow: 0 2px 3px rgba(0,0,0,0.05);
+}
+
+
+/* ===== Card Content ===== */
+
+.well-info {
+  display: flex;
+  gap: 60px;
+  align-items: center;
+}
+
+.well-name {
+  font-weight: bold;
+  font-size: 16px;
+}
+
+.well-field {
+  color: #7a8666;
+}
+
+.well-number {
+  color: #7a8666;
+}
+
+
+/* ===== Buttons ===== */
+
+.button-group {
+  display: flex;
+  gap: 10px;
+}
+
+.button {
+  background: #8b9a73;
+  color: white;
+
+  border: none;
+  border-radius: 6px;
+
+  padding: 6px 16px;
+
+  cursor: pointer;
+
+  font-size: 14px;
+}
+
+.button:hover {
+  opacity: 0.9;
+}
+
+
+/* ===== Footer ===== */
+
+.footer {
+  text-align: center;
+  margin-top: 50px;
+  font-size: 12px;
+  color: #8c9676;
 }

@@ -30,7 +30,6 @@ export default function WellsList() {
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // debounce search input -> q
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
@@ -56,7 +55,6 @@ export default function WellsList() {
     return p.toString();
   }, [q]);
 
-  // 拉 facets（只跟 q 有关）
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -65,7 +63,6 @@ export default function WellsList() {
         const json = await res.json();
         if (!cancelled && json?.ok) setLands(json.lands || []);
       } catch {
-        // facets 失败不阻塞主列表
         if (!cancelled) setLands([]);
       }
     })();
@@ -74,7 +71,6 @@ export default function WellsList() {
     };
   }, [facetsQS]);
 
-  // 拉列表（q/land/page）
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -103,99 +99,86 @@ export default function WellsList() {
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
+  function viewOnMap(w: WellRow) {
+    window.dispatchEvent(
+      new CustomEvent("well:focus", {
+        detail: {
+          id: w.id,
+          name: w.name || `Well ${w.id}`,
+          latitude: w.latitude,
+          longitude: w.longitude,
+        },
+      })
+    );
+  }
+
   return (
-    <section style={{ marginTop: 14 }}>
-      <h2 style={{ margin: "12px 0" }}>Find a well</h2>
+    <section>
+      <h2>Find a well</h2>
 
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <input
-          value={qInput}
-          onChange={(e) => setQInput(e.target.value)}
-          placeholder="Search by WellName..."
-          style={{ padding: "8px 10px", border: "1px solid #cbd5e1", borderRadius: 8, width: 260 }}
-        />
+      <div>
+        <label>
+          Search:
+          <input value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder="Search by WellName..." />
+        </label>
 
-        <select
-          value={land}
-          onChange={(e) => {
-            setPage(1);
-            setLand(e.target.value);
-          }}
-          style={{ padding: "8px 10px", border: "1px solid #cbd5e1", borderRadius: 8, minWidth: 340 }}
-        >
-          <option value="">All land locations</option>
-          {lands.map((x) => (
-            <option key={x.landLocation} value={x.landLocation}>
-              {x.landLocation} ({x.count})
-            </option>
-          ))}
-        </select>
-
-        <div style={{ marginLeft: "auto", fontSize: 12, opacity: 0.8 }}>
-          {loading ? "Loading..." : `${total} results`}
-        </div>
-      </div>
-
-      {err && <div style={{ marginTop: 8, color: "crimson" }}>{err}</div>}
-
-      <div style={{ marginTop: 10, border: "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden" }}>
-        {items.map((w) => (
-          <div
-            key={w.id}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr auto",
-              gap: 12,
-              padding: "10px 12px",
-              borderTop: "1px solid #f1f5f9",
-              alignItems: "center",
+        <label>
+          Land location:
+          <select
+            value={land}
+            onChange={(e) => {
+              setPage(1);
+              setLand(e.target.value);
             }}
           >
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {w.name || `Well ${w.id}`}
-              </div>
-              <div style={{ marginTop: 4, fontSize: 12, opacity: 0.8 }}>
+            <option value="">All land locations</option>
+            {lands.map((x) => (
+              <option key={x.landLocation} value={x.landLocation}>
+                {x.landLocation} ({x.count})
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div>{loading ? "Loading..." : `${total} results`}</div>
+      </div>
+
+      {err && <div>{err}</div>}
+
+      <div>
+        {items.map((w) => (
+          <div key={w.id}>
+            <div>
+              <div>{w.name || `Well ${w.id}`}</div>
+              <div>
                 Hole: {w.holeNumber || "-"} · Land: {w.landLocation || "-"}
               </div>
             </div>
 
-            <a
-              href={`/wells/${w.id}`}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 999,
-                border: "1px solid #cbd5e1",
-                background: "white",
-                textDecoration: "none",
-              }}
-            >
-              Details
-            </a>
+            <div>
+              <button type="button" onClick={() => viewOnMap(w)}>
+                View
+              </button>{" "}
+              <a href={`/wells/${w.id}`}>Details</a>
+            </div>
+
+            <hr />
           </div>
         ))}
 
-        {items.length === 0 && !loading && <div style={{ padding: 12, opacity: 0.7 }}>No results.</div>}
+        {items.length === 0 && !loading && <div>No results.</div>}
       </div>
 
-      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 10, alignItems: "center" }}>
-        <button
-          disabled={page <= 1}
-          onClick={() => setPage((p) => Math.max(1, p - 1))}
-          style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1", background: "white" }}
-        >
+      <div>
+        <button disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
           Prev
         </button>
 
-        <div style={{ fontSize: 12, opacity: 0.8 }}>
+        <span>
           Page {page} / {totalPages}
-        </div>
+        </span>
 
-        <button
-          disabled={page >= totalPages}
-          onClick={() => setPage((p) => p + 1)}
-          style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1", background: "white" }}
-        >
+        <button disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
           Next
         </button>
       </div>

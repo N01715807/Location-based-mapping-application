@@ -6,27 +6,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 type WellPoint = {
   id: number | string;
   name?: string | null;
-  latitude: number;
-  longitude: number;
+  latitude: number | string;
+  longitude: number | string;
   available?: boolean | number | null;
   status?: string | null;
+  distance_km?: number | null;
 };
-
-type ClusterPoint = {
-  lat: number;
-  lng: number;
-  count: number;
-};
-
-type ApiOk =
-  | { ok: true; mode: "cluster"; zoom: number; data: ClusterPoint[] }
-  | { ok: true; mode: "wells"; zoom: number; data: WellPoint[] };
-
-type ApiErr = { ok: false; error?: string };
-
-function isApiOk(x: any): x is ApiOk {
-  return x && x.ok === true && (x.mode === "cluster" || x.mode === "wells") && Array.isArray(x.data);
-}
 
 function normalizeAvailable(p: { available?: any; status?: any }): boolean | null {
   if (p.available === true || p.available === 1) return true;
@@ -40,185 +25,138 @@ function normalizeAvailable(p: { available?: any; status?: any }): boolean | nul
   return null;
 }
 
-function limitByZoom(z: number) {
-  if (z < 13) return 120;
-  if (z < 14) return 350;
-  return 800;
+const SASKATOON_CENTER = { lat: 52.1332, lng: -106.67 };
+const DEFAULT_ZOOM = 6;
+
+function inSaskatchewan(lat: number, lng: number) {
+  return lat >= 49.0 && lat <= 60.0 && lng >= -110.0 && lng <= -101.0;
 }
 
-function makeQueryKey(
-  bounds: google.maps.LatLngBounds,
-  zoom: number,
-  limit: number,
-  modeHint: "cluster" | "wells"
-) {
-  const ne = bounds.getNorthEast();
-  const sw = bounds.getSouthWest();
-  const q = (n: number) => n.toFixed(2);
-  return [modeHint, zoom, limit, q(sw.lat()), q(sw.lng()), q(ne.lat()), q(ne.lng())].join("|");
+async function getBrowserLocation(): Promise<{ lat: number; lng: number } | null> {
+  if (typeof window === "undefined") return null;
+  if (!navigator.geolocation) return null;
+
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 6000, maximumAge: 60_000 }
+    );
+  });
 }
-
-const CACHE_MS = 30_000;
-const IDLE_DEBOUNCE_MS = 350;
-
-const MAX_CLUSTER_MARKERS = 60;
-const MAX_WELL_MARKERS = 300;
 
 export default function WaterResourcesMap() {
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!,
   });
 
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
-  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastKeyRef = useRef<string>("");
-
-  const cacheRef = useRef<Map<string, { ts: number; mode: "cluster" | "wells"; data: any[] }>>(
-    new Map()
-  );
-
   const abortRef = useRef<AbortController | null>(null);
 
-  const [mode, setMode] = useState<"cluster" | "wells">("cluster");
-  const [clusters, setClusters] = useState<ClusterPoint[]>([]);
   const [wells, setWells] = useState<WellPoint[]>([]);
   const [selected, setSelected] = useState<WellPoint | null>(null);
-
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<string>("");
+  const [resetting, setResetting] = useState(false);
 
-  const clearAll = useCallback(() => {
-    setClusters([]);
-    setWells([]);
-    setSelected(null);
-  }, []);
-
-  const fetchByBounds = useCallback(async () => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const bounds = map.getBounds();
-    const zoom = map.getZoom() ?? 0;
-    if (!bounds) return;
-
-    if (zoom < 6) {
-      lastKeyRef.current = "";
-      clearAll();
-      setHint("Zoom in to see data.");
-      return;
-    }
-
-    const modeHint: "cluster" | "wells" = zoom < 13 ? "cluster" : "wells";
-    const apiLimit = limitByZoom(zoom);
-
+  const fetchNearest5 = useCallback(async (anchor: { lat: number; lng: number }) => {
+    setError(null);
     setHint("");
-
-    const key = makeQueryKey(bounds, zoom, apiLimit, modeHint);
-    if (key === lastKeyRef.current) return;
-    lastKeyRef.current = key;
-
-    const now = Date.now();
-    const cached = cacheRef.current.get(key);
-
-    if (cached && now - cached.ts < CACHE_MS) {
-      setMode(cached.mode);
-      if (cached.mode === "cluster") {
-        setClusters(cached.data as ClusterPoint[]);
-        setWells([]);
-        setSelected(null);
-      } else {
-        setWells(cached.data as WellPoint[]);
-        setClusters([]);
-      }
-      return;
-    }
 
     abortRef.current?.abort();
     abortRef.current = new AbortController();
 
-    const ne = bounds.getNorthEast();
-    const sw = bounds.getSouthWest();
-
     const params = new URLSearchParams({
-      minLat: String(sw.lat()),
-      maxLat: String(ne.lat()),
-      minLng: String(sw.lng()),
-      maxLng: String(ne.lng()),
-      zoom: String(zoom),
-      limit: String(apiLimit),
+      lat: String(anchor.lat),
+      lng: String(anchor.lng),
+      limit: "5",
     });
 
+    const res = await fetch(`/api/water-resources/nearest?${params.toString()}`, {
+      cache: "no-store",
+      signal: abortRef.current.signal,
+    });
+
+    if (!res.ok) throw new Error(`API ${res.status}`);
+
+    const json = await res.json();
+    const data = Array.isArray(json?.data) ? (json.data as WellPoint[]) : [];
+
+    setWells(data.slice(0, 5));
+    setSelected(null);
+
+    if (data.length === 0) setHint("No wells found.");
+  }, []);
+
+  const resetToNearest = useCallback(async () => {
     try {
+      setResetting(true);
       setError(null);
+      setHint("");
 
-      const res = await fetch(`/api/water-resources?${params.toString()}`, {
-        cache: "no-store",
-        signal: abortRef.current.signal,
-      });
+      const loc = await getBrowserLocation();
+      const anchor = loc && inSaskatchewan(loc.lat, loc.lng) ? loc : SASKATOON_CENTER;
 
-      if (!res.ok) throw new Error(`API ${res.status}`);
-
-      const raw: unknown = await res.json();
-      if (!isApiOk(raw)) {
-        const msg = (raw as any)?.error || "Bad API response";
-        throw new Error(msg);
+      const map = mapRef.current;
+      if (map) {
+        map.panTo(anchor);
+        map.setZoom(10);
       }
 
-      const json = raw;
-
-      if (json.mode === "cluster") {
-        const valid = json.data
-          .filter((c) => Number.isFinite(c.lat) && Number.isFinite(c.lng) && c.count > 0)
-          .sort((a, b) => b.count - a.count)
-          .slice(0, Math.min(apiLimit, MAX_CLUSTER_MARKERS));
-
-        cacheRef.current.set(key, { ts: now, mode: "cluster", data: valid });
-
-        setMode("cluster");
-        setClusters(valid);
-        setWells([]);
-        setSelected(null);
-
-        if (valid.length === 0) setHint("No results in this area.");
-      } else {
-        const valid = json.data
-          .filter(
-            (w) => Number.isFinite(Number(w.latitude)) && Number.isFinite(Number(w.longitude))
-          )
-          .slice(0, Math.min(apiLimit, MAX_WELL_MARKERS));
-
-        cacheRef.current.set(key, { ts: now, mode: "wells", data: valid });
-
-        setMode("wells");
-        setWells(valid);
-        setClusters([]);
-
-        if (valid.length === 0) setHint("No wells in this area.");
-      }
+      await fetchNearest5(anchor);
     } catch (e: any) {
       if (e?.name === "AbortError") return;
       setError(String(e?.message || e));
+    } finally {
+      setResetting(false);
     }
-  }, [clearAll]);
+  }, [fetchNearest5]);
 
   const onLoad = useCallback(
-    (map: google.maps.Map) => {
+    async (map: google.maps.Map) => {
       mapRef.current = map;
-      fetchByBounds();
+
+      map.setCenter(SASKATOON_CENTER);
+      map.setZoom(DEFAULT_ZOOM);
+
+      await resetToNearest();
     },
-    [fetchByBounds]
+    [resetToNearest]
   );
 
-  const onIdle = useCallback(() => {
-    if (idleTimer.current) clearTimeout(idleTimer.current);
-    idleTimer.current = setTimeout(() => {
-      fetchByBounds();
-    }, IDLE_DEBOUNCE_MS);
-  }, [fetchByBounds]);
-
   useEffect(() => {
+    function onFocus(e: Event) {
+      const ce = e as CustomEvent<any>;
+      const d = ce.detail || {};
+      const lat = Number(d.latitude);
+      const lng = Number(d.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+      const p: WellPoint = {
+        id: d.id ?? "focus",
+        name: d.name ?? "Selected",
+        latitude: lat,
+        longitude: lng,
+        available: null,
+        status: null,
+      };
+
+      wrapperRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+      setWells([p]);
+      setSelected(p);
+
+      const map = mapRef.current;
+      if (map) {
+        map.panTo({ lat, lng });
+        map.setZoom(14);
+      }
+    }
+
+    window.addEventListener("well:focus", onFocus as any);
     return () => {
-      if (idleTimer.current) clearTimeout(idleTimer.current);
+      window.removeEventListener("well:focus", onFocus as any);
       abortRef.current?.abort();
     };
   }, []);
@@ -227,69 +165,55 @@ export default function WaterResourcesMap() {
   if (!isLoaded) return <div>Loading...</div>;
 
   return (
-    <div style={{ width: "100%" }}>
-      <div style={{ display: "flex", gap: 12, marginBottom: 8, fontSize: 12, opacity: 0.85 }}>
-        <div>
-          mode: <b>{mode}</b>
-        </div>
-        <div>
-          clusters: <b>{clusters.length}</b>
-        </div>
-        <div>
-          wells: <b>{wells.length}</b>
-        </div>
-      </div>
+    <div ref={wrapperRef} className="map-inner">
+      <button
+        type="button"
+        onClick={resetToNearest}
+        disabled={resetting}
+        className="reset-btn"
+        aria-label="Reset map"
+        title="Reset"
+      >
+        <img className="reset-img reset-img--normal" src="/reset.png" alt="" aria-hidden="true" />
+        <img className="reset-img reset-img--hover" src="/reset-hover.png" alt="" aria-hidden="true" />
+        <img className="reset-img reset-img--down" src="/reset-down.png" alt="" aria-hidden="true" />
+      </button>
 
-      {hint && <div style={{ marginBottom: 8, opacity: 0.8 }}>{hint}</div>}
-      {error && <div style={{ marginBottom: 8, color: "crimson" }}>{error}</div>}
+      {hint && <div className="map-hint">{hint}</div>}
+      {error && <div className="map-error">{error}</div>}
 
       <GoogleMap
-        center={{ lat: 52.9, lng: -106.0 }}
-        zoom={6}
         mapContainerStyle={{ width: "100%", height: "80vh" }}
         onLoad={onLoad}
-        onIdle={onIdle}
         options={{
+          mapTypeId: "hybrid",
           clickableIcons: false,
           streetViewControl: false,
           mapTypeControl: false,
           gestureHandling: "greedy",
-          styles: [
-            { featureType: "poi", stylers: [{ visibility: "off" }] },
-            { featureType: "transit", stylers: [{ visibility: "off" }] },
-          ],
+          draggable: true,
+          scrollwheel: true,
+          zoomControl: true,
         }}
       >
-        {mode === "cluster" &&
-          wells.length === 0 &&
-          clusters.map((c) => (
-            <Marker
-              key={`c-${c.lat.toFixed(5)}-${c.lng.toFixed(5)}`}
-              position={{ lat: c.lat, lng: c.lng }}
-              label={{ text: String(c.count) }}
-              onClick={() => {}}
-            />
-          ))}
+        {wells.map((w) => (
+          <Marker
+            key={String(w.id)}
+            position={{ lat: Number(w.latitude), lng: Number(w.longitude) }}
+            onClick={() => setSelected(w)}
+          />
+        ))}
 
-        {mode === "wells" &&
-          clusters.length === 0 &&
-          wells.map((w) => (
-            <Marker
-              key={String(w.id)}
-              position={{ lat: Number(w.latitude), lng: Number(w.longitude) }}
-              onClick={() => setSelected(w)}
-            />
-          ))}
-
-        {selected && mode === "wells" && (
+        {selected && (
           <InfoWindow
             position={{ lat: Number(selected.latitude), lng: Number(selected.longitude) }}
             onCloseClick={() => setSelected(null)}
           >
-            <div style={{ maxWidth: 260 }}>
+            <div>
               <strong>{selected.name || "Unknown"}</strong>
-              <div style={{ marginTop: 6 }}>
-                <span style={{ fontWeight: 600 }}>Status: </span>
+
+              <div>
+                <span>Status: </span>
                 {(() => {
                   const a = normalizeAvailable(selected);
                   if (a === true) return "Available";
@@ -297,7 +221,12 @@ export default function WaterResourcesMap() {
                   return "-";
                 })()}
               </div>
-              <div style={{ marginTop: 6, fontSize: 12 }}>
+
+              {typeof selected.distance_km === "number" && (
+                <div>Distance: {selected.distance_km.toFixed(2)} km</div>
+              )}
+
+              <div>
                 <div>Lat: {Number(selected.latitude).toFixed(6)}</div>
                 <div>Lng: {Number(selected.longitude).toFixed(6)}</div>
               </div>

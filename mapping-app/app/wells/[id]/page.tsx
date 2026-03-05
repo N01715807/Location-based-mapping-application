@@ -56,6 +56,17 @@ export default async function WellDetailPage({
 
   const [rows]: any = await pool.query(sql, [id]);
   const r = rows?.[0];
+  const [logsRows]: any = await pool.query(
+  `
+  SELECT id, used_at, field_name, amount, note
+  FROM usage_logs
+  WHERE is_deleted = 0 AND water_resource_id = ?
+  ORDER BY used_at DESC
+  LIMIT 50
+  `,
+  [id]
+);
+const logs = logsRows || [];
   if (!r) return <main>Not found</main>;
 
   const attrs = r.raw_attributes ?? {};
@@ -135,6 +146,32 @@ export default async function WellDetailPage({
           </tbody>
         </table>
       )}
+
+      <h2>Usage Logs</h2>
+      {logs.length === 0 ? (
+        <div>No logs yet.</div>
+      ) : (
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Field</th>
+            <th>Amount</th>
+            <th>Note</th>
+          </tr>
+      </thead>
+      <tbody>
+        {logs.map((x: any) => (
+          <tr key={String(x.id)}>
+            <td>{String(x.used_at)}</td>
+            <td>{x.field_name}</td>
+            <td>{x.amount}</td>
+            <td>{x.note || "-"}</td>
+          </tr>
+        ))}
+      </tbody>
+      </table>
+    )}
 
       {Number.isFinite(lat) && Number.isFinite(lng) && <WellWeatherCard lat={lat} lng={lng} />}
     </main>
