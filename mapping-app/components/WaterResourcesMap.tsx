@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { GoogleMap, Marker, InfoWindow, useLoadScript } from "@react-google-maps/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -11,6 +12,12 @@ type WellPoint = {
   available?: boolean | number | null;
   status?: string | null;
   distance_km?: number | null;
+  hole_number?: string | null;
+  land_location?: string | null;
+  borehole_depth?: number | null;
+  water_level?: number | null;
+  pumping_rate?: number | null;
+  recommended_pumping_rate?: number | null;
 };
 
 function normalizeAvailable(p: { available?: any; status?: any }): boolean | null {
@@ -26,7 +33,8 @@ function normalizeAvailable(p: { available?: any; status?: any }): boolean | nul
 }
 
 const SASKATOON_CENTER = { lat: 52.1332, lng: -106.67 };
-const DEFAULT_ZOOM = 6;
+const DEFAULT_ZOOM = 13;
+const DEFAULT_RADIUS_KM = 10;
 
 function inSaskatchewan(lat: number, lng: number) {
   return lat >= 49.0 && lat <= 60.0 && lng >= -110.0 && lng <= -101.0;
@@ -60,7 +68,7 @@ export default function WaterResourcesMap() {
   const [hint, setHint] = useState<string>("");
   const [resetting, setResetting] = useState(false);
 
-  const fetchNearest5 = useCallback(async (anchor: { lat: number; lng: number }) => {
+  const fetchNearbyWells = useCallback(async (anchor: { lat: number; lng: number }) => {
     setError(null);
     setHint("");
 
@@ -70,7 +78,7 @@ export default function WaterResourcesMap() {
     const params = new URLSearchParams({
       lat: String(anchor.lat),
       lng: String(anchor.lng),
-      limit: "5",
+      radiusKm: String(DEFAULT_RADIUS_KM),
     });
 
     const res = await fetch(`/api/water-resources/nearest?${params.toString()}`, {
@@ -83,13 +91,12 @@ export default function WaterResourcesMap() {
     const json = await res.json();
     const data = Array.isArray(json?.data) ? (json.data as WellPoint[]) : [];
 
-    setWells(data.slice(0, 5));
+    setWells(data);
     setSelected(null);
 
-    if (data.length === 0) setHint("No wells found.");
   }, []);
 
-  const resetToNearest = useCallback(async () => {
+  const resetToNearby = useCallback(async () => {
     try {
       setResetting(true);
       setError(null);
@@ -101,17 +108,17 @@ export default function WaterResourcesMap() {
       const map = mapRef.current;
       if (map) {
         map.panTo(anchor);
-        map.setZoom(10);
+        map.setZoom(DEFAULT_ZOOM);
       }
 
-      await fetchNearest5(anchor);
+      await fetchNearbyWells(anchor);
     } catch (e: any) {
       if (e?.name === "AbortError") return;
       setError(String(e?.message || e));
     } finally {
       setResetting(false);
     }
-  }, [fetchNearest5]);
+  }, [fetchNearbyWells]);
 
   const onLoad = useCallback(
     async (map: google.maps.Map) => {
@@ -120,9 +127,9 @@ export default function WaterResourcesMap() {
       map.setCenter(SASKATOON_CENTER);
       map.setZoom(DEFAULT_ZOOM);
 
-      await resetToNearest();
+      await resetToNearby();
     },
-    [resetToNearest]
+    [resetToNearby]
   );
 
   useEffect(() => {
@@ -138,8 +145,15 @@ export default function WaterResourcesMap() {
         name: d.name ?? "Selected",
         latitude: lat,
         longitude: lng,
-        available: null,
-        status: null,
+        available: d.available ?? null,
+        status: d.status ?? null,
+        distance_km: d.distance_km ?? null,
+        hole_number: d.hole_number ?? null,
+        land_location: d.land_location ?? null,
+        borehole_depth: d.borehole_depth ?? null,
+        water_level: d.water_level ?? null,
+        pumping_rate: d.pumping_rate ?? null,
+        recommended_pumping_rate: d.recommended_pumping_rate ?? null,
       };
 
       wrapperRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -168,7 +182,7 @@ export default function WaterResourcesMap() {
     <div ref={wrapperRef} className="map-inner">
       <button
         type="button"
-        onClick={resetToNearest}
+        onClick={resetToNearby}
         disabled={resetting}
         className="reset-btn"
         aria-label="Reset map"
@@ -201,6 +215,10 @@ export default function WaterResourcesMap() {
             key={String(w.id)}
             position={{ lat: Number(w.latitude), lng: Number(w.longitude) }}
             onClick={() => setSelected(w)}
+            icon={{
+              url: "/marker-available.png",
+              scaledSize: new google.maps.Size(36, 36),
+            }}
           />
         ))}
 
@@ -211,6 +229,9 @@ export default function WaterResourcesMap() {
           >
             <div>
               <strong>{selected.name || "Unknown"}</strong>
+
+              {selected.land_location && <div>Land: {selected.land_location}</div>}
+              {selected.hole_number && <div>Hole: {selected.hole_number}</div>}
 
               <div>
                 <span>Status: </span>
@@ -226,9 +247,29 @@ export default function WaterResourcesMap() {
                 <div>Distance: {selected.distance_km.toFixed(2)} km</div>
               )}
 
+              {typeof selected.borehole_depth === "number" && (
+                <div>Depth: {selected.borehole_depth} ft</div>
+              )}
+
+              {typeof selected.water_level === "number" && (
+                <div>Water level: {selected.water_level}</div>
+              )}
+
+              {typeof selected.pumping_rate === "number" && (
+                <div>Pumping rate: {selected.pumping_rate}</div>
+              )}
+
+              {typeof selected.recommended_pumping_rate === "number" && (
+                <div>Recommended pumping rate: {selected.recommended_pumping_rate}</div>
+              )}
+
               <div>
                 <div>Lat: {Number(selected.latitude).toFixed(6)}</div>
                 <div>Lng: {Number(selected.longitude).toFixed(6)}</div>
+              </div>
+
+              <div style={{ marginTop: "10px" }}>
+                <Link href={`/wells/${selected.id}`}>Detail</Link>
               </div>
             </div>
           </InfoWindow>

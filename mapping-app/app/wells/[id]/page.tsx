@@ -1,5 +1,6 @@
 import { getPool } from "@/lib/db";
 import WellWeatherCard from "@/components/WellWeatherCard";
+import UsageLogsPanel from "@/components/UsageLogsPanel";
 
 export const runtime = "nodejs";
 
@@ -7,24 +8,31 @@ type KV = { label: string; key: string; unit?: string };
 
 function isMeaningful(v: any) {
   if (v === null || v === undefined) return false;
+
   if (typeof v === "string") {
     const s = v.trim();
     if (!s) return false;
     if (s.toLowerCase() === "none" || s.toLowerCase() === "null") return false;
     return true;
   }
+
   if (typeof v === "number") {
     return v !== 0 && Number.isFinite(v);
   }
+
   return true;
 }
 
 function pickMeaningful(attrs: any, fields: KV[]) {
   const out: Array<{ label: string; value: any; unit?: string }> = [];
+
   for (const f of fields) {
     const v = attrs?.[f.key];
-    if (isMeaningful(v)) out.push({ label: f.label, value: v, unit: f.unit });
+    if (isMeaningful(v)) {
+      out.push({ label: f.label, value: v, unit: f.unit });
+    }
   }
+
   return out;
 }
 
@@ -36,7 +44,9 @@ export default async function WellDetailPage({
   const { id: idStr } = await params;
   const id = Number(idStr);
 
-  if (!Number.isFinite(id)) return <main>Invalid well id</main>;
+  if (!Number.isFinite(id)) {
+    return <main>Invalid well id</main>;
+  }
 
   const pool = getPool();
 
@@ -46,8 +56,8 @@ export default async function WellDetailPage({
       JSON_UNQUOTE(JSON_EXTRACT(raw_attributes, '$.WellName')) AS name,
       JSON_UNQUOTE(JSON_EXTRACT(raw_attributes, '$.cHoleNumber')) AS holeNumber,
       JSON_UNQUOTE(JSON_EXTRACT(raw_attributes, '$.cLandLocationDisplay')) AS landLocation,
-      latitude,
-      longitude,
+      CAST(JSON_UNQUOTE(JSON_EXTRACT(raw_geometry, '$.y')) AS DECIMAL(10,7)) AS latitude,
+      CAST(JSON_UNQUOTE(JSON_EXTRACT(raw_geometry, '$.x')) AS DECIMAL(10,7)) AS longitude,
       raw_attributes
     FROM water_resources_source
     WHERE is_deleted = 0 AND source_objectid = ?
@@ -56,124 +66,107 @@ export default async function WellDetailPage({
 
   const [rows]: any = await pool.query(sql, [id]);
   const r = rows?.[0];
-  const [logsRows]: any = await pool.query(
-  `
-  SELECT id, used_at, field_name, amount, note
-  FROM usage_logs
-  WHERE is_deleted = 0 AND water_resource_id = ?
-  ORDER BY used_at DESC
-  LIMIT 50
-  `,
-  [id]
-);
-const logs = logsRows || [];
-  if (!r) return <main>Not found</main>;
+
+  if (!r) {
+    return <main>Not found</main>;
+  }
 
   const attrs = r.raw_attributes ?? {};
   const lat = Number(r.latitude);
   const lng = Number(r.longitude);
 
-  const overviewFields: KV[] = [
+  const characteristicFields: KV[] = [
     { key: "dCompleted", label: "Completed date" },
-    { key: "cwelluse", label: "Well use / type" },
+    { key: "cwelluse", label: "Well type" },
     { key: "cwateruse", label: "Water use" },
     { key: "cinstmethd", label: "Installation method" },
-    { key: "cDrillerName", label: "Driller" },
-    { key: "nelevation", label: "Elevation", unit: "ft" }, 
-    { key: "cUtmZone", label: "UTM zone" },
-    { key: "nUtmEasting", label: "UTM easting" },
-    { key: "nUtmNorthing", label: "UTM northing" },
   ];
 
-  const hydroFields: KV[] = [
+  const waterFields: KV[] = [
     { key: "nBoreHoleDepthInFeet", label: "Borehole depth", unit: "ft" },
-    { key: "nBitDiameter", label: "Bit diameter" },
     { key: "nWaterLevel", label: "Water level" },
-    { key: "ndrawdown", label: "Drawdown" },
-    { key: "nduration", label: "Duration" },
     { key: "nPumpingRate", label: "Pumping rate" },
     { key: "nRecommendedPumpingRate", label: "Recommended pumping rate" },
+    { key: "ndrawdown", label: "Drawdown" },
+    { key: "nduration", label: "Duration" },
     { key: "nFlowingHead", label: "Flowing head" },
     { key: "nTemperature", label: "Water temperature" },
   ];
 
-  const overview = pickMeaningful(attrs, overviewFields);
-  const hydro = pickMeaningful(attrs, hydroFields);
+  const characteristics = pickMeaningful(attrs, characteristicFields);
+  const waterInfo = pickMeaningful(attrs, waterFields);
+
+  const title = r.landLocation || r.name || r.holeNumber || "Water Well";
 
   return (
     <main>
-      <h1>{r.name || `Well ${r.id}`}</h1>
+      <h1>{title}</h1>
 
-      <h2>Basic info</h2>
+      <h2>Location</h2>
       <table>
         <tbody>
-          <tr><td>ID</td><td>{r.id}</td></tr>
-          <tr><td>Hole number</td><td>{r.holeNumber || "-"}</td></tr>
-          <tr><td>Land location</td><td>{r.landLocation || "-"}</td></tr>
-          <tr><td>Latitude</td><td>{Number.isFinite(lat) ? lat : "-"}</td></tr>
-          <tr><td>Longitude</td><td>{Number.isFinite(lng) ? lng : "-"}</td></tr>
+          <tr>
+            <td>Land location</td>
+            <td>{r.landLocation || "-"}</td>
+          </tr>
+          <tr>
+            <td>Hole number</td>
+            <td>{r.holeNumber || "-"}</td>
+          </tr>
+          <tr>
+            <td>Latitude</td>
+            <td>{Number.isFinite(lat) ? lat : "-"}</td>
+          </tr>
+          <tr>
+            <td>Longitude</td>
+            <td>{Number.isFinite(lng) ? lng : "-"}</td>
+          </tr>
         </tbody>
       </table>
 
-      <h2>Well details (only meaningful values)</h2>
-      {overview.length === 0 ? (
-        <div>No additional details available.</div>
+      <h2>Well characteristics</h2>
+      {characteristics.length === 0 ? (
+        <div>No well characteristics available.</div>
       ) : (
         <table>
           <tbody>
-            {overview.map((x) => (
+            {characteristics.map((x) => (
               <tr key={x.label}>
                 <td>{x.label}</td>
-                <td>{String(x.value)}{x.unit ? ` ${x.unit}` : ""}</td>
+                <td>
+                  {String(x.value)}
+                  {x.unit ? ` ${x.unit}` : ""}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
 
-      <h2>Hydrology / physical (only meaningful values)</h2>
-      {hydro.length === 0 ? (
-        <div>No hydrology measurements recorded for this well.</div>
+      <h2>Water and pumping information</h2>
+      {waterInfo.length === 0 ? (
+        <div>No water or pumping data available for this well.</div>
       ) : (
         <table>
           <tbody>
-            {hydro.map((x) => (
+            {waterInfo.map((x) => (
               <tr key={x.label}>
                 <td>{x.label}</td>
-                <td>{String(x.value)}{x.unit ? ` ${x.unit}` : ""}</td>
+                <td>
+                  {String(x.value)}
+                  {x.unit ? ` ${x.unit}` : ""}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
 
-      <h2>Usage Logs</h2>
-      {logs.length === 0 ? (
-        <div>No logs yet.</div>
-      ) : (
-      <table>
-        <thead>
-          <tr>
-            <th>Time</th>
-            <th>Field</th>
-            <th>Amount</th>
-            <th>Note</th>
-          </tr>
-      </thead>
-      <tbody>
-        {logs.map((x: any) => (
-          <tr key={String(x.id)}>
-            <td>{String(x.used_at)}</td>
-            <td>{x.field_name}</td>
-            <td>{x.amount}</td>
-            <td>{x.note || "-"}</td>
-          </tr>
-        ))}
-      </tbody>
-      </table>
-    )}
+      <UsageLogsPanel wellId={id} />
 
-      {Number.isFinite(lat) && Number.isFinite(lng) && <WellWeatherCard lat={lat} lng={lng} />}
+      {Number.isFinite(lat) && Number.isFinite(lng) && (
+        <WellWeatherCard lat={lat} lng={lng} />
+      )}
     </main>
   );
 }

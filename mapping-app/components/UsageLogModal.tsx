@@ -131,10 +131,6 @@ export default function UsageLogModal() {
     <div>
       <button onClick={() => setOpen(false)}>Close</button>
 
-      <h2>Usage Log</h2>
-
-      <h3>Select well (search + filter)</h3>
-
       <div>
         <div>Search by name:</div>
         <input
@@ -193,8 +189,6 @@ export default function UsageLogModal() {
           Next
         </button>
       </div>
-
-      <h3>Log</h3>
 
       <div>
         <div>Field *</div>

@@ -36,6 +36,7 @@ export default function WellsList() {
       setPage(1);
       setQ(qInput.trim());
     }, 300);
+
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
@@ -57,6 +58,7 @@ export default function WellsList() {
 
   useEffect(() => {
     let cancelled = false;
+
     (async () => {
       try {
         const res = await fetch(`/api/wells/facets?${facetsQS}`, { cache: "no-store" });
@@ -66,6 +68,7 @@ export default function WellsList() {
         if (!cancelled) setLands([]);
       }
     })();
+
     return () => {
       cancelled = true;
     };
@@ -73,6 +76,7 @@ export default function WellsList() {
 
   useEffect(() => {
     let cancelled = false;
+
     (async () => {
       try {
         setLoading(true);
@@ -92,6 +96,7 @@ export default function WellsList() {
         if (!cancelled) setLoading(false);
       }
     })();
+
     return () => {
       cancelled = true;
     };
@@ -104,7 +109,7 @@ export default function WellsList() {
       new CustomEvent("well:focus", {
         detail: {
           id: w.id,
-          name: w.name || `Well ${w.id}`,
+          name: w.landLocation || w.name || `Well ${w.id}`,
           latitude: w.latitude,
           longitude: w.longitude,
         },
@@ -112,19 +117,32 @@ export default function WellsList() {
     );
   }
 
+  function getTitle(w: WellRow) {
+    return w.landLocation || w.name || `Well ${w.id}`;
+  }
+
+  function getSubtitle(w: WellRow) {
+    if (w.name && w.name !== w.landLocation) return w.name;
+    return "Open details for more information";
+  }
+
   return (
-    <section>
-      <h2>Find a well</h2>
+    <section className="wells-list-section">
+      <div className="wells-list-toolbar">
+        <div className="wells-list-filter">
+          <label htmlFor="well-search">Search wells</label>
+          <input
+            id="well-search"
+            value={qInput}
+            onChange={(e) => setQInput(e.target.value)}
+            placeholder="Search by land location or well name"
+          />
+        </div>
 
-      <div>
-        <label>
-          Search:
-          <input value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder="Search by WellName..." />
-        </label>
-
-        <label>
-          Land location:
+        <div className="wells-list-filter">
+          <label htmlFor="land-location-filter">Land location</label>
           <select
+            id="land-location-filter"
             value={land}
             onChange={(e) => {
               setPage(1);
@@ -138,47 +156,53 @@ export default function WellsList() {
               </option>
             ))}
           </select>
-        </label>
+        </div>
 
-        <div>{loading ? "Loading..." : `${total} results`}</div>
+        <div className="wells-list-result-count">
+          {loading ? "Loading wells..." : `${total} well${total === 1 ? "" : "s"} found`}
+        </div>
       </div>
 
-      {err && <div>{err}</div>}
+      {err && <div className="wells-list-error">{err}</div>}
 
-      <div>
+      <div className="wells-list-results">
         {items.map((w) => (
-          <div key={w.id}>
-            <div>
-              <div>{w.name || `Well ${w.id}`}</div>
-              <div>
-                Hole: {w.holeNumber || "-"} · Land: {w.landLocation || "-"}
-              </div>
+          <div key={w.id} className="wells-list-item">
+            <div className="wells-list-item-main">
+              <div className="wells-list-item-title">{getTitle(w)}</div>
+              <div className="wells-list-item-subtitle">{getSubtitle(w)}</div>
             </div>
 
-            <div>
+            <div className="wells-list-item-actions">
               <button type="button" onClick={() => viewOnMap(w)}>
-                View
-              </button>{" "}
-              <a href={`/wells/${w.id}`}>Details</a>
+                View on map
+              </button>
+              <a href={`/wells/${w.id}`}>View details</a>
             </div>
-
-            <hr />
           </div>
         ))}
 
-        {items.length === 0 && !loading && <div>No results.</div>}
+        {items.length === 0 && !loading && <div className="wells-list-empty">No wells found.</div>}
       </div>
 
-      <div>
-        <button disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-          Prev
+      <div className="wells-list-pagination">
+        <button
+          type="button"
+          disabled={page <= 1}
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+        >
+          Previous
         </button>
 
         <span>
-          Page {page} / {totalPages}
+          Page {page} of {totalPages}
         </span>
 
-        <button disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+        <button
+          type="button"
+          disabled={page >= totalPages}
+          onClick={() => setPage((p) => p + 1)}
+        >
           Next
         </button>
       </div>
