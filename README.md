@@ -51,7 +51,7 @@ This allows farmers to easily explore water resources on a map.
 ## 1. Clone the repository
 
 ```bash
-git clone https://github.com/yourusername/your-repository
+git clone https://github.com/N01715807/Location-based-mapping-application/tree/main/mapping-app
 cd your-repository
 ```
 ## 2. Install dependencies
